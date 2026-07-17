@@ -10,6 +10,21 @@ from app.api.routes import wheel_inspection
 from app.core.config import settings
 from app.db.session import Base, engine
 from app.api.routes import auth, products, inspections, analytics, models_admin
+# chat gpt new exception added here for debug in production
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print("=" * 80)
+    print("UNHANDLED EXCEPTION")
+    traceback.print_exc()
+    print("=" * 80)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
 
 # Create tables (for local/dev; use Alembic migrations in production)
 Base.metadata.create_all(bind=engine)

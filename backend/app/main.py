@@ -15,6 +15,13 @@ import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="Industrial AI quality inspection platform: product/component/defect "
+                "detection, rule-based PASS/FAIL decisions, and continuous learning.",
+    version="1.0.0",
+)
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     print("=" * 80)
@@ -29,12 +36,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Create tables (for local/dev; use Alembic migrations in production)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(
-    title=settings.APP_NAME,
-    description="Industrial AI quality inspection platform: product/component/defect "
-                "detection, rule-based PASS/FAIL decisions, and continuous learning.",
-    version="1.0.0",
-)
+
 
 app.add_middleware(
     CORSMiddleware,

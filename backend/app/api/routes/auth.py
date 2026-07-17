@@ -13,8 +13,23 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
+
+    print("========== LOGIN DEBUG ==========")
+    print("Username entered:", form_data.username)
+
+    if user:
+        print("User found")
+        print("Stored hash:", user.hashed_password)
+        print("Password entered:", form_data.password)
+        print("Password matches:", verify_password(form_data.password, user.hashed_password))
+    else:
+        print("User NOT found")
+
     if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
+        raise HTTPException(
+        status_code=401,
+        detail="Incorrect username or password"
+    )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 

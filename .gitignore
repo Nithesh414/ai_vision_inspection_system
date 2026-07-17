@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env files
+.env
+backend/.env
+
+# Uploads / generated data
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# AI model weights & training runs (large binaries — don't commit)
+
+ai_models/runs/
+ai_models/dataset/**/*.jpg
+ai_models/dataset/**/*.png
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Mobile (React Native)
+mobile/node_modules/
+mobile/ios/Pods/
+mobile/android/.gradle/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+

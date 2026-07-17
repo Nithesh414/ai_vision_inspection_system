@@ -1,0 +1,27 @@
+# Example YOLO dataset config for the defect_detection module.
+# Duplicate/adjust for product_detection_data.yaml and component_detection_data.yaml.
+#
+# Expected folder layout (YOLO format - images/ + labels/ with matching filenames):
+#
+# dataset/defect_detection/
+#   train/images/*.jpg   train/labels/*.txt
+#   validation/images/*.jpg   validation/labels/*.txt
+#   test/images/*.jpg   test/labels/*.txt
+#
+# The illustrative class-folder layout under ai_models/dataset/train/<label>/
+# (good, missing_component, misaligned, crack, scratch) is where raw verified
+# images land first; convert to YOLO bbox format before training (labeling
+# tool e.g. Label Studio / CVAT is recommended for drawing bounding boxes).
+
+path: dataset/defect_detection
+train: train/images
+val: validation/images
+test: test/images
+
+names:
+  0: scratch
+  1: crack
+  2: dent
+  3: rust
+  4: surface_damage
+  5: broken_component

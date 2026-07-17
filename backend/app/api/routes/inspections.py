@@ -31,7 +31,6 @@ from app.services.report_generator import generate_inspection_pdf
 
 router = APIRouter(prefix="/api/inspections", tags=["inspections"])
 
-
 @router.post("", response_model=InspectionCreateResponse, status_code=201)
 async def create_inspection(
     product_id: str = Form(...),
@@ -39,195 +38,190 @@ async def create_inspection(
     db: Session = Depends(get_db),
     payload: dict = Depends(require_roles("operator", "supervisor", "administrator")),
 ):
-
-    product = db.query(Product).filter(Product.id == product_id).first()
-
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    # -------------------------------
-    # Save Uploaded Image
-    # -------------------------------
-
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-
-    ext = os.path.splitext(image.filename)[1] or ".jpg"
-
-    filename = f"{uuid.uuid4()}{ext}"
-
-    image_path = os.path.join(settings.UPLOAD_DIR, filename)
-
-    contents = await image.read()
-
-    if len(contents) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        raise HTTPException(
-            status_code=413,
-            detail="Image exceeds maximum upload size",
-        )
-
-    with open(image_path, "wb") as f:
-        f.write(contents)
-
-    # -------------------------------
-    # Image Validation
-    # -------------------------------
-
     try:
+        print("========== INSPECTION START ==========")
+
+        print("STEP 1 - Looking up product")
+        product = db.query(Product).filter(Product.id == product_id).first()
+
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        print("STEP 2 - Saving uploaded image")
+
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+        ext = os.path.splitext(image.filename)[1] or ".jpg"
+        filename = f"{uuid.uuid4()}{ext}"
+        image_path = os.path.join(settings.UPLOAD_DIR, filename)
+
+        contents = await image.read()
+
+        if len(contents) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail="Image exceeds maximum upload size",
+            )
+
+        with open(image_path, "wb") as f:
+            f.write(contents)
+
+        print(f"Saved image: {image_path}")
+
+        print("STEP 3 - Image validation")
         validate_and_preprocess(image_path)
 
-    except ImageQualityError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=str(e),
+        print("STEP 4 - AI prediction")
+
+        prediction = wheel_classifier.predict(image_path)
+
+        print("Prediction:", prediction)
+
+        print("STEP 5 - Rule engine")
+
+        decision = evaluate_wheel_prediction(
+            prediction["class_name"],
+            prediction["confidence"],
         )
 
-    # -------------------------------
-    # Start Timer
-    # -------------------------------
+        print("Decision:", decision)
 
-    start = time.perf_counter()
+        start = time.perf_counter()
 
-    # -------------------------------
-    # Run AI Model
-    # -------------------------------
+        inspection_time = round(
+            time.perf_counter() - start,
+            3,
+        )
 
-    prediction = wheel_classifier.predict(image_path)
+        status = (
+            InspectionStatus.PASS_
+            if decision["decision"] == "PASS"
+            else InspectionStatus.FAIL
+        )
 
-    decision = evaluate_wheel_prediction(
-        prediction["class_name"],
-        prediction["confidence"],
-    )
+        severity_map = {
+            "none": Severity.NONE,
+            "minor": Severity.MINOR,
+            "medium": Severity.MAJOR,
+            "major": Severity.MAJOR,
+            "high": Severity.CRITICAL,
+            "critical": Severity.CRITICAL,
+        }
 
-    inspection_time = round(
-        time.perf_counter() - start,
-        3,
-    )
+        severity = severity_map.get(
+            decision["severity"].lower(),
+            Severity.MAJOR,
+        )
 
-    # -------------------------------
-    # Inspection Status
-    # -------------------------------
+        print("STEP 6 - Creating inspection")
 
-    status = (
-        InspectionStatus.PASS_
-        if decision["decision"] == "PASS"
-        else InspectionStatus.FAIL
-    )
+        inspection = Inspection(
+            product_id=product.id,
+            operator_id=payload["sub"],
+            image_path=image_path,
+            status=status,
+            confidence=prediction["confidence_percentage"] / 100,
+            severity=severity,
+            ai_raw_output=prediction,
+            rule_engine_output=decision,
+            inspection_time_seconds=inspection_time,
+        )
 
-    severity_map = {
-    "none": Severity.NONE,
-    "minor": Severity.MINOR,
-    "medium": Severity.MAJOR,
-    "major": Severity.MAJOR,
-    "high": Severity.CRITICAL,
-    "critical": Severity.CRITICAL,}
+        db.add(inspection)
+        db.flush()
 
-    severity = severity_map.get(
-        decision["severity"].lower(),
-        Severity.MAJOR,)
+        print("Inspection ID:", inspection.id)
 
-    # -------------------------------
-    # Save Inspection
-    # -------------------------------
+        if not decision["passed"]:
+            print("STEP 7 - Saving defect")
 
-    inspection = Inspection(
-        product_id=product.id,
-        operator_id=payload["sub"],
-        image_path=image_path,
-        status=status,
-        confidence=prediction["confidence_percentage"]/100,
-        severity=severity,
-        ai_raw_output=prediction,
-        rule_engine_output=decision,
-        inspection_time_seconds=inspection_time,
-    )
+            defect = Defect(
+                inspection_id=inspection.id,
+                defect_type="Missing Screw",
+                component_name=f'{decision["wheel_type"]} wheel',
+                location=None,
+                severity=Severity.CRITICAL,
+                confidence=prediction["confidence"] / 100,
+                suggested_correction=decision["suggested_actions"][0],
+            )
 
-    db.add(inspection)
+            db.add(defect)
 
-    db.flush()
+        print("STEP 8 - Creating report")
 
-    # -------------------------------
-    # Save Defect (Only if FAIL)
-    # -------------------------------
+        operator = (
+            db.query(User)
+            .filter(User.id == payload["sub"])
+            .first()
+        )
 
-    if not decision["passed"]:
+        report_folder = os.path.join(
+            settings.UPLOAD_DIR,
+            "reports",
+        )
 
-        defect = Defect(
+        os.makedirs(report_folder, exist_ok=True)
+
+        report_path = os.path.join(
+            report_folder,
+            f"{inspection.id}.pdf",
+        )
+
+        generate_inspection_pdf(
+            output_path=report_path,
+            image_path=image_path,
+            product_name=product.name,
+            status=decision["decision"],
+            confidence=prediction["confidence_percentage"] / 100,
+            severity=decision["severity"],
+            reasons=decision["reasons"],
+            suggested_actions=decision["suggested_actions"],
+            inspection_time_seconds=inspection_time,
+            operator_name=operator.full_name or operator.username,
+            supervisor_name=None,
+            created_at=datetime.utcnow(),
+        )
+
+        report = InspectionReport(
             inspection_id=inspection.id,
-            defect_type="Missing Screw",
-            component_name=f'{decision["wheel_type"]} wheel',
-            location=None,
-            severity=Severity.CRITICAL,
-            confidence=prediction["confidence"]/100,
-            suggested_correction=decision["suggested_actions"][0],
+            pdf_path=report_path,
+            summary=f'{decision["decision"]} - {prediction["class_name"]}',
+            reasons=decision["reasons"],
+            suggested_actions=decision["suggested_actions"],
         )
 
-        db.add(defect)
+        db.add(report)
 
-    # -------------------------------
-    # Generate Report
-    # -------------------------------
+        print("STEP 9 - Commit database")
 
-    operator = (
-        db.query(User)
-        .filter(User.id == payload["sub"])
-        .first()
-    )
+        db.commit()
+        db.refresh(inspection)
 
-    report_folder = os.path.join(
-        settings.UPLOAD_DIR,
-        "reports",
-    )
+        print("========== INSPECTION SUCCESS ==========")
 
-    os.makedirs(report_folder, exist_ok=True)
+        return InspectionCreateResponse(
+            id=inspection.id,
+            product_id=inspection.product_id,
+            status=inspection.status.value,
+            confidence=prediction["confidence_percentage"] / 100,
+            severity=inspection.severity.value,
+            inspection_time_seconds=inspection.inspection_time_seconds,
+            created_at=inspection.created_at,
+            defects=inspection.defects,
+            reasons=decision["reasons"],
+            suggested_actions=decision["suggested_actions"],
+        )
 
-    report_path = os.path.join(
-        report_folder,
-        f"{inspection.id}.pdf",
-    )
+    except Exception as e:
+        import traceback
 
-    generate_inspection_pdf(
-        output_path=report_path,
-        image_path=image_path,
-        product_name=product.name,
-        status=decision["decision"],
-        confidence=prediction["confidence_percentage"]/100,
-        severity=decision["severity"],
-        reasons=decision["reasons"],
-        suggested_actions=decision["suggested_actions"],
-        inspection_time_seconds=inspection_time,
-        operator_name=operator.full_name or operator.username,
-        supervisor_name=None,
-        created_at=datetime.utcnow(),
-    )
+        print("\n========== INSPECTION ERROR ==========")
+        traceback.print_exc()
+        print("ERROR:", str(e))
+        print("======================================\n")
 
-    report = InspectionReport(
-        inspection_id=inspection.id,
-        pdf_path=report_path,
-        summary=f'{decision["decision"]} - {prediction["class_name"]}',
-        reasons=decision["reasons"],
-        suggested_actions=decision["suggested_actions"],
-    )
-
-    db.add(report)
-
-    db.commit()
-
-    db.refresh(inspection)
-
-    return InspectionCreateResponse(
-        id=inspection.id,
-        product_id=inspection.product_id,
-        status=inspection.status.value,
-        confidence=prediction["confidence_percentage"]/100,
-        severity=inspection.severity.value,
-        inspection_time_seconds=inspection.inspection_time_seconds,
-        created_at=inspection.created_at,
-        defects=inspection.defects,
-        reasons=decision["reasons"],
-        suggested_actions=decision["suggested_actions"],
-    )
-
-
+        raise
+        
 @router.get("", response_model=list[InspectionOut])
 def list_inspections(
     db: Session = Depends(get_db),

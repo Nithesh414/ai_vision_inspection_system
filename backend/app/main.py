@@ -15,7 +15,8 @@ from app.api.routes import (
     inspections,
     analytics,
     models_admin,
-    training
+    training,
+    wheel_inspection
 )
 # chat gpt new exception added here for debug in production
 import traceback

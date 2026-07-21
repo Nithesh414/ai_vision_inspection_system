@@ -9,7 +9,14 @@ from app.api.routes import wheel_inspection
 
 from app.core.config import settings
 from app.db.session import Base, engine
-from app.api.routes import auth, products, inspections, analytics, models_admin
+from app.api.routes import (
+    auth,
+    products,
+    inspections,
+    analytics,
+    models_admin,
+    training
+)
 # chat gpt new exception added here for debug in production
 import traceback
 from fastapi import Request

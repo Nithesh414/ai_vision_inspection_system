@@ -63,16 +63,16 @@ class WheelClassifier:
 
         self.model.load_state_dict(state_dict)
 
-        self.model.load_state_dict(state_dict)
-
         self.model.to(self.device)
         self.model.eval()
 
         # This must match your training preprocessing
         self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-        ])
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225],),])
 
     def predict(self, image_path: str | Path) -> dict[str, Any]:
         image_path = Path(image_path)

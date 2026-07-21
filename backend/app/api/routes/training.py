@@ -1,121 +1,197 @@
 from fastapi import APIRouter, UploadFile, File, Form
+from pathlib import Path
 import shutil
 import uuid
-import random
-import time
-from pathlib import Path
+from datetime import datetime
+
 
 router = APIRouter(
     prefix="/api/training",
     tags=["Training"]
 )
 
+
 UPLOAD_DIR = Path("uploads/training")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
 
 DATASET = []
 
-training_status = {
-    "running": False,
-    "completed": False,
-    "progress": 0,
-    "epoch": 0,
-    "accuracy": 0,
-    "loss": 0,
-    "model_version": "v1.0"
+
+PRODUCTS = []
+
+
+TRAINING_STATUS = {
+
+    "model_name":"No Model",
+
+    "status":"Idle",
+
+    "progress":0,
+
+    "accuracy":0,
+
+    "loss":0,
+
+    "dataset_images":0
+
 }
 
 
-# ===============================
-# Upload Training Image
-# ===============================
-@router.post("/upload")
-async def upload_training_sample(
-    image: UploadFile = File(...),
-    product_id: str = Form(...),
-    label: str = Form(...),
-    notes: str = Form("")
+
+# ==========================
+# CREATE PRODUCT
+# ==========================
+
+@router.post("/product")
+def create_product(
+    name:str = Form(...),
+    code:str = Form(...)
 ):
 
-    extension = Path(image.filename).suffix or ".jpg"
+    product={
 
-    filename = f"{uuid.uuid4()}{extension}"
+        "id":str(uuid.uuid4()),
 
-    path = UPLOAD_DIR / filename
+        "name":name,
 
-    with open(path, "wb") as buffer:
-        shutil.copyfileobj(image.file, buffer)
+        "code":code,
+
+        "created_at":
+        str(datetime.now())
+
+    }
+
+
+    PRODUCTS.append(product)
+
+
+    return product
+
+
+
+
+# ==========================
+# UPLOAD TRAINING IMAGE
+# ==========================
+
+@router.post("/upload")
+async def upload_training_sample(
+
+    image:UploadFile = File(...),
+
+    product_id:str = Form(...),
+
+    label:str = Form(...),
+
+    notes:str = Form("")
+
+):
+
+
+    filename=f"{uuid.uuid4()}.jpg"
+
+
+    path=UPLOAD_DIR / filename
+
+
+    with open(path,"wb") as buffer:
+
+        shutil.copyfileobj(
+            image.file,
+            buffer
+        )
+
+
 
     DATASET.append({
-        "id": str(uuid.uuid4()),
-        "product_id": product_id,
-        "product_name": product_id,
-        "label": label,
-        "notes": notes,
-        "image_url": f"/uploads/training/{filename}",
-        "created_at": "Just Now"
+
+        "id":str(uuid.uuid4()),
+
+        "product_id":product_id,
+
+        "label":label,
+
+        "notes":notes,
+
+        "image":
+        f"/uploads/training/{filename}"
+
     })
 
+
     return {
-        "success": True,
-        "message": "Training sample uploaded successfully"
+
+        "success":True,
+
+        "total_images":
+        len(DATASET)
+
     }
 
 
-# ===============================
-# Dataset
-# ===============================
-@router.get("/dataset")
-def list_dataset():
-    return {
-        "total_images": len(DATASET),
-        "dataset": DATASET
-    }
 
 
-# ===============================
-# Fake Training
-# ===============================
+
+# ==========================
+# START FAKE TRAINING
+# ==========================
+
 @router.post("/start")
 def start_training():
 
-    training_status["running"] = True
-    training_status["completed"] = False
 
-    for epoch in range(1, 11):
+    TRAINING_STATUS.update({
 
-        time.sleep(0.5)
+        "model_name":
+        "Industrial_AI_Model_v1",
 
-        training_status["epoch"] = epoch
-        training_status["progress"] = epoch * 10
+        "status":
+        "Training",
 
-        training_status["accuracy"] = round(
-            random.uniform(90, 99),
-            2,
-        )
+        "progress":50,
 
-        training_status["loss"] = round(
-            random.uniform(0.05, 0.30),
-            3,
-        )
+        "accuracy":94.5,
 
-    training_status["running"] = False
-    training_status["completed"] = True
+        "loss":0.08,
 
-    current = float(training_status["model_version"][1:])
-    training_status["model_version"] = f"v{current + 0.1:.1f}"
+        "dataset_images":
+        len(DATASET)
+
+    })
+
+
+    return TRAINING_STATUS
+
+
+
+
+# ==========================
+# TRAINING STATUS
+# ==========================
+
+@router.get("/status")
+def training_status():
+
+    return TRAINING_STATUS
+
+
+
+# ==========================
+# DATASET
+# ==========================
+
+@router.get("")
+def dataset():
 
     return {
-        "success": True,
-        "message": "Model Training Completed",
-        "model_version": training_status["model_version"],
-        "accuracy": training_status["accuracy"]
+
+        "images":DATASET,
+
+        "count":
+        len(DATASET)
+
     }
-
-
-# ===============================
-# Training Status
-# ===============================
-@router.get("/status")
-def training_progress():
-    return training_status

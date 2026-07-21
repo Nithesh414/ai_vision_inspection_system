@@ -15,6 +15,9 @@ import traceback
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.api.routes import training
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="Industrial AI quality inspection platform: product/component/defect "
@@ -53,7 +56,7 @@ app.include_router(products.router)
 app.include_router(inspections.router)
 app.include_router(analytics.router)
 app.include_router(models_admin.router)
-
+app.include_router(training.router)
 app.include_router(wheel_inspection.router)
 
 @app.get("/api/health")

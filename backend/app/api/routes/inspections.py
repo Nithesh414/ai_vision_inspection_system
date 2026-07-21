@@ -57,6 +57,12 @@ async def create_inspection(
 
         contents = await image.read()
 
+        print("\n========== RECEIVED IMAGE ==========")
+        print("Filename :", image.filename)
+        print("Content-Type :", image.content_type)
+        print("Bytes :", len(contents))
+        print("====================================\n")
+
         if len(contents) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             raise HTTPException(
                 status_code=413,
@@ -65,6 +71,10 @@ async def create_inspection(
 
         with open(image_path, "wb") as f:
             f.write(contents)
+
+        print("Saved Image:", image_path)
+        print("File Exists:", os.path.exists(image_path))
+        print("File Size:", os.path.getsize(image_path))
 
         print(f"Saved image: {image_path}")
 
@@ -75,6 +85,9 @@ async def create_inspection(
 
         prediction = wheel_classifier.predict(image_path)
 
+        print("\n========== MODEL OUTPUT ==========")
+        print(prediction)
+        print("==================================\n")
         print("Prediction:", prediction)
 
         print("STEP 5 - Rule engine")

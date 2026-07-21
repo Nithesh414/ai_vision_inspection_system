@@ -16,7 +16,6 @@ router = APIRouter(
     tags=["Wheel Inspection"],
 )
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 UPLOAD_DIR = (
@@ -30,7 +29,6 @@ UPLOAD_DIR.mkdir(
     exist_ok=True,
 )
 
-
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
     "image/jpg",
@@ -43,6 +41,11 @@ ALLOWED_CONTENT_TYPES = {
 async def predict_wheel(
     image: UploadFile = File(...),
 ):
+    print("\n================ WHEEL INSPECTION ================")
+
+    print("Filename :", image.filename)
+    print("Content-Type :", image.content_type)
+
     if image.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
@@ -63,20 +66,33 @@ async def predict_wheel(
     image_path = UPLOAD_DIR / file_name
 
     try:
+
         with image_path.open("wb") as buffer:
             shutil.copyfileobj(
                 image.file,
                 buffer,
             )
 
+        print("Saved Image :", image_path)
+        print("File Exists :", image_path.exists())
+        print("File Size :", image_path.stat().st_size, "bytes")
+
         prediction = wheel_classifier.predict(
-            image_path
+            str(image_path)
         )
+
+        print("\n========== MODEL OUTPUT ==========")
+        print(prediction)
 
         rule_result = evaluate_wheel_prediction(
             class_name=prediction["class_name"],
             confidence=prediction["confidence"],
         )
+
+        print("\n========== RULE ENGINE ==========")
+        print(rule_result)
+
+        print("=================================\n")
 
         return {
             "success": True,
@@ -86,6 +102,9 @@ async def predict_wheel(
         }
 
     except Exception as error:
+
+        print("ERROR :", error)
+
         if image_path.exists():
             image_path.unlink()
 

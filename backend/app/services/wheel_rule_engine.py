@@ -4,7 +4,7 @@ from typing import Any
 def evaluate_wheel_prediction(
     class_name: str,
     confidence: float,
-    minimum_confidence: float = 0.80,
+    minimum_confidence: float = 0.65,
 ) -> dict[str, Any]:
 
     if confidence < minimum_confidence:

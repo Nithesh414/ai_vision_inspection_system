@@ -96,7 +96,9 @@ async def create_inspection(
             prediction["class_name"],
             prediction["confidence"],
         )
-
+        print("\n========== MODEL OUTPUT ==========")
+        print(prediction)
+        print("==================================\n")
         print("Decision:", decision)
 
         start = time.perf_counter()

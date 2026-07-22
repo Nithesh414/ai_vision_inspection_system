@@ -81,7 +81,7 @@ class Inspection(Base):
     __tablename__ = "inspections"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
-    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id"), nullable=False)
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id"), nullable=True)
     operator_id = Column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
 
     image_path = Column(String(512), nullable=False)

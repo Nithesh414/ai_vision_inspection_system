@@ -1,1 +1,1 @@
-from .model_version import ModelVersion
+from .models import ModelVersion

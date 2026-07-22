@@ -438,3 +438,22 @@ def dataset():
         len(DATASET)
 
     }
+MODEL_STATUS = {
+
+    "current_model":"Industrial_AI_Model_v1.0",
+
+    "latest_model":"Industrial_AI_Model_v1.1",
+
+    "status":"Completed",
+
+    "accuracy":96.5,
+
+    "dataset_images":120
+
+}
+
+
+@router.get("/model-status")
+def model_status():
+
+    return MODEL_STATUS

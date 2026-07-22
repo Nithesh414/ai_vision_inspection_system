@@ -1,27 +1,40 @@
 import shutil
 import uuid
-from pathlib import Path
+import time
 
-from fastapi import APIRouter
-from fastapi import File
-from fastapi import HTTPException
-from fastapi import UploadFile
-from fastapi import Depends
+from pathlib import Path
+from datetime import datetime
+
+from fastapi import (
+    APIRouter,
+    File,
+    UploadFile,
+    HTTPException,
+    Depends
+)
 
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models.models import Inspection
 
+from app.models.models import (
+    Inspection,
+    InspectionStatus,
+    Severity
+)
 
 from app.services.wheel_classifier import wheel_classifier
-from app.services.wheel_rule_engine import evaluate_wheel_prediction
+
+from app.services.wheel_rule_engine import (
+    evaluate_wheel_prediction
+)
 
 
 router = APIRouter(
     prefix="/api/wheel-inspection",
     tags=["Wheel Inspection"],
 )
+
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
@@ -38,17 +51,19 @@ UPLOAD_DIR = (
 
 UPLOAD_DIR.mkdir(
     parents=True,
-    exist_ok=True,
+    exist_ok=True
 )
 
 
+
 ALLOWED_CONTENT_TYPES = {
+
     "image/jpeg",
     "image/jpg",
     "image/png",
-    "image/webp",
-}
+    "image/webp"
 
+}
 
 
 
@@ -59,31 +74,48 @@ ALLOWED_CONTENT_TYPES = {
 @router.post("/predict")
 async def predict_wheel(
     image: UploadFile = File(...),
+    db: Session = Depends(get_db)
 ):
 
-    print("\n================ WHEEL INSPECTION ================")
+    start_time = time.perf_counter()
 
 
-    print("Filename :", image.filename)
+    print(
+        "\n================ WHEEL INSPECTION ================"
+    )
 
-    print("Content-Type :", image.content_type)
+
+    print(
+        "Filename :",
+        image.filename
+    )
+
+    print(
+        "Content-Type :",
+        image.content_type
+    )
 
 
 
     if image.content_type not in ALLOWED_CONTENT_TYPES:
 
         raise HTTPException(
+
             status_code=400,
-            detail=(
-                "Unsupported image format. "
-                "Use JPG, JPEG, PNG or WEBP."
-            ),
+
+            detail=
+            "Unsupported image format. Use JPG, JPEG, PNG or WEBP."
+
         )
 
 
 
     extension = Path(
-        image.filename or "capture.jpg"
+
+        image.filename
+        or
+        "capture.jpg"
+
     ).suffix.lower()
 
 
@@ -94,74 +126,289 @@ async def predict_wheel(
 
 
 
-    file_name = f"{uuid.uuid4()}{extension}"
+    file_name = (
 
-    image_path = UPLOAD_DIR / file_name
+        f"{uuid.uuid4()}{extension}"
+
+    )
+
+
+    image_path = (
+
+        UPLOAD_DIR
+        /
+        file_name
+
+    )
 
 
 
     try:
 
 
+        # ================================
+        # SAVE IMAGE
+        # ================================
+
+
         with image_path.open("wb") as buffer:
 
+
             shutil.copyfileobj(
+
                 image.file,
-                buffer,
+
+                buffer
+
             )
 
 
 
-        print("Saved Image :", image_path)
-
-
-
-        prediction = wheel_classifier.predict(
-            str(image_path)
+        print(
+            "Saved Image :",
+            image_path
         )
 
 
 
-        print("\n========== MODEL OUTPUT ==========")
+        # ================================
+        # AI MODEL
+        # ================================
 
-        print(prediction)
+
+        prediction = (
+
+            wheel_classifier.predict(
+
+                str(image_path)
+
+            )
+
+        )
+
+
+        print(
+            "MODEL OUTPUT:",
+            prediction
+        )
 
 
 
-        rule_result = evaluate_wheel_prediction(
+        confidence = prediction.get(
 
-            class_name=prediction["class_name"],
+            "confidence",
 
-            confidence=prediction["confidence"]
+            0
 
         )
 
 
 
-        print("\n========== RULE ENGINE ==========")
+        # ================================
+        # RULE ENGINE
+        # ================================
 
-        print(rule_result)
+
+        rule_result = (
+
+            evaluate_wheel_prediction(
+
+                class_name=
+                prediction["class_name"],
+
+
+                confidence=
+                confidence
+
+            )
+
+        )
+
+
+        print(
+            "RULE RESULT:",
+            rule_result
+        )
+
+
+
+        inspection_time = round(
+
+            time.perf_counter()
+            -
+            start_time,
+
+            3
+
+        )
+
+
+
+        # ================================
+        # STATUS
+        # ================================
+
+
+        status = (
+
+            InspectionStatus.PASS_
+
+            if
+
+            rule_result["decision"]
+            ==
+            "PASS"
+
+            else
+
+            InspectionStatus.FAIL
+
+        )
+
+
+
+        severity_value = (
+
+            rule_result.get(
+
+                "severity",
+
+                "none"
+
+            )
+
+        ).lower()
+
+
+
+        severity_map = {
+
+
+            "none":
+            Severity.NONE,
+
+
+            "minor":
+            Severity.MINOR,
+
+
+            "medium":
+            Severity.MAJOR,
+
+
+            "major":
+            Severity.MAJOR,
+
+
+            "critical":
+            Severity.CRITICAL
+
+        }
+
+
+
+        severity = severity_map.get(
+
+            severity_value,
+
+            Severity.NONE
+
+        )
+
+
+
+
+        # ================================
+        # SAVE INSPECTION DB
+        # ================================
+
+
+        inspection = Inspection(
+
+
+            image_path=str(image_path),
+
+
+            status=status,
+
+
+            confidence=confidence,
+
+
+            severity=severity,
+
+
+            ai_raw_output=prediction,
+
+
+            rule_engine_output=rule_result,
+
+
+            inspection_time_seconds=
+            inspection_time,
+
+
+            created_at=datetime.utcnow()
+
+        )
+
+
+
+        db.add(inspection)
+
+        db.commit()
+
+        db.refresh(inspection)
+
+
+
+        print(
+            "INSPECTION ID:",
+            inspection.id
+        )
 
 
 
         return {
 
+
             "success": True,
 
-            "image_name": file_name,
 
-            "prediction": prediction,
+            "inspection_id":
+            inspection.id,
 
-            "inspection": rule_result,
+
+            "image_name":
+            file_name,
+
+
+            "prediction":
+            prediction,
+
+
+            "inspection":
+            rule_result,
+
+
+            "database_saved":
+            True
 
         }
+
 
 
 
     except Exception as error:
 
 
-        print("ERROR :", error)
+        print(
+            "ERROR:",
+            error
+        )
+
+
+        db.rollback()
 
 
 
@@ -175,13 +422,14 @@ async def predict_wheel(
 
             status_code=500,
 
-            detail=f"Wheel inspection failed: {error}",
+            detail=f"Wheel inspection failed: {error}"
 
-        ) from error
+        )
 
 
 
     finally:
+
 
         await image.close()
 
@@ -194,23 +442,35 @@ async def predict_wheel(
 # GET INSPECTION RESULT
 # =====================================================
 
+
 @router.get("/inspection/{inspection_id}")
 def get_wheel_inspection(
+
     inspection_id: str,
-    db: Session = Depends(get_db),
+
+    db: Session = Depends(get_db)
+
 ):
 
 
     inspection = (
+
         db.query(Inspection)
+
         .filter(
+
             Inspection.id == inspection_id
+
         )
+
         .first()
+
     )
 
 
+
     if not inspection:
+
 
         raise HTTPException(
 
@@ -224,38 +484,74 @@ def get_wheel_inspection(
 
     return {
 
+
         "success": True,
 
-        "inspection_id": inspection.id,
 
-        "status": inspection.status.value
-        if inspection.status
-        else None,
+        "inspection_id":
+        inspection.id,
 
 
-        "confidence": inspection.confidence,
+        "status":
+
+        (
+
+            inspection.status.value
+
+            if inspection.status
+
+            else None
+
+        ),
 
 
-        "severity": inspection.severity.value
-        if inspection.severity
-        else None,
+
+        "confidence":
+
+        inspection.confidence,
 
 
-        "image_path": inspection.image_path,
+
+        "severity":
+
+        (
+
+            inspection.severity.value
+
+            if inspection.severity
+
+            else None
+
+        ),
 
 
-        "ai_output": inspection.ai_raw_output,
+
+        "image_path":
+
+        inspection.image_path,
 
 
-        "rule_engine": inspection.rule_engine_output,
+
+        "ai_output":
+
+        inspection.ai_raw_output,
+
+
+
+        "rule_engine":
+
+        inspection.rule_engine_output,
+
 
 
         "inspection_time_seconds":
-            inspection.inspection_time_seconds,
+
+        inspection.inspection_time_seconds,
+
 
 
         "created_at":
-            inspection.created_at,
 
+        inspection.created_at
 
     }

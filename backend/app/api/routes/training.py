@@ -21,14 +21,16 @@ UPLOAD_DIR.mkdir(
 )
 
 
+# Temporary memory storage
 DATASET = []
 
 PRODUCTS = []
 
 
+
 # =====================================
 # MODEL STATUS (DISPLAY ONLY)
-# Inspection will NOT use this
+# Inspection DOES NOT use this
 # =====================================
 
 MODEL_STATUS = {
@@ -66,25 +68,19 @@ MODEL_STATUS = {
 
 @router.post("/product")
 def create_product(
-
-    name:str = Form(...),
-    code:str = Form(...)
-
+    name: str = Form(...),
+    code: str = Form(...)
 ):
 
     product = {
 
-        "id":
-        str(uuid.uuid4()),
+        "id": str(uuid.uuid4()),
 
-        "name":
-        name,
+        "name": name,
 
-        "code":
-        code,
+        "code": code,
 
-        "created_at":
-        str(datetime.now())
+        "created_at": str(datetime.now())
 
     }
 
@@ -97,8 +93,9 @@ def create_product(
 
 
 
+
 # =====================================
-# PRODUCT LIST
+# GET PRODUCTS
 # =====================================
 
 @router.get("/products")
@@ -117,13 +114,13 @@ def get_products():
 @router.post("/upload")
 async def upload_training_sample(
 
-    image:UploadFile = File(...),
+    image: UploadFile = File(...),
 
-    product_id:str = Form(...),
+    product_id: str = Form(...),
 
-    label:str = Form(...),
+    label: str = Form(...),
 
-    notes:str = Form("")
+    notes: str = Form("")
 
 ):
 
@@ -131,11 +128,11 @@ async def upload_training_sample(
     filename = f"{uuid.uuid4()}.jpg"
 
 
-    path = UPLOAD_DIR / filename
+    file_path = UPLOAD_DIR / filename
 
 
 
-    with open(path,"wb") as buffer:
+    with open(file_path, "wb") as buffer:
 
         shutil.copyfileobj(
             image.file,
@@ -172,16 +169,17 @@ async def upload_training_sample(
     })
 
 
+    # real count update
     MODEL_STATUS["dataset_images"] = len(DATASET)
 
 
 
     return {
 
-        "success":True,
+        "success": True,
 
         "message":
-        "Training image uploaded",
+        "Training image uploaded successfully",
 
         "total_images":
         len(DATASET)
@@ -193,8 +191,7 @@ async def upload_training_sample(
 
 
 # =====================================
-# FAKE RETRAINING PROCESS
-# Display purpose only
+# DEMO RETRAINING PROCESS
 # =====================================
 
 def run_training():
@@ -202,15 +199,15 @@ def run_training():
 
     MODEL_STATUS["status"] = "Training"
 
-
     MODEL_STATUS["progress"] = 0
 
 
 
-    for step in range(1,11):
+    for epoch in range(1,11):
 
 
-        MODEL_STATUS["progress"] = step * 10
+        MODEL_STATUS["progress"] = epoch * 10
+
 
 
         MODEL_STATUS["accuracy"] = round(
@@ -230,6 +227,9 @@ def run_training():
 
 
     MODEL_STATUS["status"] = "Completed"
+
+
+    MODEL_STATUS["progress"] = 100
 
 
     MODEL_STATUS["latest_model"] = (
@@ -261,19 +261,14 @@ def start_training():
     run_training()
 
 
-
     return {
 
-
-        "success":
-        True,
-
+        "success": True,
 
         "message":
         "Retraining completed",
 
-
-        "model":
+        "model_status":
         MODEL_STATUS
 
     }
@@ -296,33 +291,61 @@ def get_training_status():
 
 
 # =====================================
-# MODEL STATUS FOR ANALYTICS
+# ANALYTICS MODEL CARD
 # =====================================
 
 @router.get("/model-status")
-def model_status():
-
-    return MODEL_STATUS
-
-
-
-
-
-# =====================================
-# DATASET LIST
-# =====================================
-
-@router.get("")
-def dataset():
-
+def get_model_status():
 
     return {
 
-        "images":
-        DATASET,
+        "current_model":
+        MODEL_STATUS["current_model"],
 
+
+        "latest_model":
+        MODEL_STATUS["latest_model"],
+
+
+        "status":
+        MODEL_STATUS["status"],
+
+
+        "accuracy":
+        MODEL_STATUS["accuracy"],
+
+
+        "loss":
+        MODEL_STATUS["loss"],
+
+
+        "dataset_images":
+        len(DATASET),
+
+
+        "last_training":
+        MODEL_STATUS["last_training"]
+
+    }
+
+
+
+
+
+# =====================================
+# DATASET VIEW
+# =====================================
+
+@router.get("")
+def get_dataset():
+
+    return {
 
         "count":
-        len(DATASET)
+        len(DATASET),
+
+
+        "images":
+        DATASET
 
     }

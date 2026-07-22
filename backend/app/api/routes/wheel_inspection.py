@@ -194,19 +194,16 @@ async def predict_wheel(
         ):
 
 
-            product = (
-
-                db.query(Product)
-
-                .filter(
-
-                    Product.id == product_id
-
-                )
-
-                .first()
-
-            )
+            Product(
+    name="Wheel Inspection",
+    code="AUTO-WHEEL",
+    description="AI Wheel Inspection",
+    specification={
+        "component": "Wheel",
+        "inspection_type": "defect_detection",
+        "model": "wheel_classifier"
+    }
+)
 
 
 

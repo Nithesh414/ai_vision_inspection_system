@@ -2,7 +2,10 @@ from fastapi import APIRouter, UploadFile, File, Form
 from pathlib import Path
 import shutil
 import uuid
+import time
+import random
 from datetime import datetime
+from threading import Thread
 
 
 router = APIRouter(
@@ -12,6 +15,7 @@ router = APIRouter(
 
 
 UPLOAD_DIR = Path("uploads/training")
+
 UPLOAD_DIR.mkdir(
     parents=True,
     exist_ok=True
@@ -24,21 +28,55 @@ DATASET = []
 PRODUCTS = []
 
 
+
+# ==========================
+# GLOBAL MODEL STATUS
+# ==========================
+
 TRAINING_STATUS = {
 
-    "model_name":"No Model",
 
-    "status":"Idle",
+    "model_name":
+    "No Model",
 
-    "progress":0,
 
-    "accuracy":0,
+    "model_version":
+    "v0.0",
 
-    "loss":0,
 
-    "dataset_images":0
+    "status":
+    "Idle",
+
+
+    "progress":
+    0,
+
+
+    "epoch":
+    0,
+
+
+    "total_epochs":
+    10,
+
+
+    "accuracy":
+    0,
+
+
+    "loss":
+    0,
+
+
+    "dataset_images":
+    0,
+
+
+    "last_training":
+    None
 
 }
+
 
 
 
@@ -48,17 +86,27 @@ TRAINING_STATUS = {
 
 @router.post("/product")
 def create_product(
+
     name:str = Form(...),
+
     code:str = Form(...)
+
 ):
+
 
     product={
 
-        "id":str(uuid.uuid4()),
+        "id":
+        str(uuid.uuid4()),
 
-        "name":name,
 
-        "code":code,
+        "name":
+        name,
+
+
+        "code":
+        code,
+
 
         "created_at":
         str(datetime.now())
@@ -70,6 +118,20 @@ def create_product(
 
 
     return product
+
+
+
+
+
+# ==========================
+# PRODUCT LIST
+# ==========================
+
+@router.get("/products")
+def get_products():
+
+    return PRODUCTS
+
 
 
 
@@ -92,13 +154,20 @@ async def upload_training_sample(
 ):
 
 
-    filename=f"{uuid.uuid4()}.jpg"
+    filename = (
+        f"{uuid.uuid4()}.jpg"
+    )
 
 
-    path=UPLOAD_DIR / filename
+    path = (
+        UPLOAD_DIR / filename
+    )
 
 
-    with open(path,"wb") as buffer:
+    with open(
+        path,
+        "wb"
+    ) as buffer:
 
         shutil.copyfileobj(
             image.file,
@@ -109,23 +178,47 @@ async def upload_training_sample(
 
     DATASET.append({
 
-        "id":str(uuid.uuid4()),
 
-        "product_id":product_id,
+        "id":
+        str(uuid.uuid4()),
 
-        "label":label,
 
-        "notes":notes,
+        "product_id":
+        product_id,
+
+
+        "label":
+        label,
+
+
+        "notes":
+        notes,
+
 
         "image":
-        f"/uploads/training/{filename}"
+        f"/uploads/training/{filename}",
+
+
+        "created_at":
+        str(datetime.now())
 
     })
 
 
+    TRAINING_STATUS["dataset_images"] = len(DATASET)
+
+
+
     return {
 
-        "success":True,
+
+        "success":
+        True,
+
+
+        "message":
+        "Image saved",
+
 
         "total_images":
         len(DATASET)
@@ -137,46 +230,157 @@ async def upload_training_sample(
 
 
 # ==========================
-# START FAKE TRAINING
+# FAKE TRAINING PROCESS
 # ==========================
+
+
+def fake_training():
+
+
+    TRAINING_STATUS["status"] = "Preparing Dataset"
+
+    TRAINING_STATUS["progress"] = 10
+
+
+    time.sleep(2)
+
+
+
+    for epoch in range(1,11):
+
+
+        TRAINING_STATUS["status"] = (
+            "Training Model"
+        )
+
+
+        TRAINING_STATUS["epoch"] = epoch
+
+
+        TRAINING_STATUS["progress"] = (
+            epoch * 10
+        )
+
+
+        TRAINING_STATUS["accuracy"] = round(
+
+            random.uniform(
+                94,
+                99
+            ),
+
+            2
+        )
+
+
+        TRAINING_STATUS["loss"] = round(
+
+            random.uniform(
+                0.05,
+                0.2
+            ),
+
+            3
+        )
+
+
+        time.sleep(1)
+
+
+
+    TRAINING_STATUS["status"] = "Completed"
+
+
+    TRAINING_STATUS["progress"] = 100
+
+
+
+    TRAINING_STATUS["model_name"] = (
+        "Industrial_AI_Model"
+    )
+
+
+    TRAINING_STATUS["model_version"] = (
+        "v1.0"
+    )
+
+
+    TRAINING_STATUS["last_training"] = (
+        str(datetime.now())
+    )
+
+
+
+
+
+
+# ==========================
+# START TRAINING
+# ==========================
+
 
 @router.post("/start")
 def start_training():
 
 
-    TRAINING_STATUS.update({
+    if TRAINING_STATUS["status"]=="Training":
 
-        "model_name":
-        "Industrial_AI_Model_v1",
+        return {
 
-        "status":
-        "Training",
+            "message":
+            "Already running"
 
-        "progress":50,
-
-        "accuracy":94.5,
-
-        "loss":0.08,
-
-        "dataset_images":
-        len(DATASET)
-
-    })
+        }
 
 
-    return TRAINING_STATUS
+
+    thread = Thread(
+
+        target=fake_training
+
+    )
+
+
+    thread.start()
+
+
+
+    TRAINING_STATUS["status"] = (
+        "Training"
+    )
+
+
+
+    return {
+
+
+        "success":
+        True,
+
+
+        "message":
+        "Fake retraining started"
+
+    }
+
+
 
 
 
 
 # ==========================
-# TRAINING STATUS
+# STATUS
 # ==========================
+
 
 @router.get("/status")
-def training_status():
+def get_training_status():
+
 
     return TRAINING_STATUS
+
+
+
 
 
 
@@ -184,12 +388,17 @@ def training_status():
 # DATASET
 # ==========================
 
+
 @router.get("")
 def dataset():
 
+
     return {
 
-        "images":DATASET,
+
+        "images":
+        DATASET,
+
 
         "count":
         len(DATASET)

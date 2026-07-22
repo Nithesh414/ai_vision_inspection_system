@@ -8,7 +8,7 @@ from datetime import datetime
 from threading import Thread
 
 from app.db.session import SessionLocal
-from app.models.model_version import ModelVersion
+from app.models.models import ModelVersion
 
 
 router = APIRouter(

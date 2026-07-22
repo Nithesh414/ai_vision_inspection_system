@@ -144,24 +144,22 @@ async def predict_wheel(
         product = None
 
 
-        if product_id and product_id.strip():
-
-
+        if (
+          product_id 
+          and product_id.strip()
+          and product_id.lower() != "string"):
             product = (
-                db.query(Product)
-                .filter(
-                    Product.id == product_id
-                )
-                .first()
-            )
+            db.query(Product).filter(
+            Product.id == product_id.first())
 
 
-            if not product:
+      if not product:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found")
 
-                raise HTTPException(
-                    status_code=404,
-                    detail="Product not found"
-                )
+      else:
+         product = None
 
 
 

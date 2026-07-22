@@ -1,879 +1,173 @@
-"""
-Wheel Inspection Endpoint
-
-Flow:
-
-Image Upload
-      |
-      v
-AI Wheel Classification
-      |
-      v
-Rule Engine
-      |
-      v
-Inspection Table
-      |
-      v
-Defect + PDF Report
-"""
-
-
-import os
 import shutil
 import uuid
-import time
-
-
 from pathlib import Path
-from datetime import datetime
 
-
-from fastapi import (
-    APIRouter,
-    UploadFile,
-    File,
-    Form,
-    Depends,
-    HTTPException
-)
-
+from fastapi import APIRouter
+from fastapi import File
+from fastapi import HTTPException
+from fastapi import UploadFile
+from fastapi import Depends
 
 from sqlalchemy.orm import Session
 
-
 from app.db.session import get_db
-
-from app.core.security import require_roles
-
-from app.core.config import settings
-
-
-from app.models.models import (
-
-    Inspection,
-
-    Product,
-
-    Defect,
-
-    InspectionReport,
-
-    InspectionStatus,
-
-    Severity,
-
-    User
-
-)
+from app.models.models import Inspection
 
 
 from app.services.wheel_classifier import wheel_classifier
-
 from app.services.wheel_rule_engine import evaluate_wheel_prediction
-
-from app.services.report_generator import generate_inspection_pdf
-
-
-
 
 
 router = APIRouter(
-
     prefix="/api/wheel-inspection",
-
-    tags=["Wheel Inspection"]
-
+    tags=["Wheel Inspection"],
 )
 
 
-
+BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 
 UPLOAD_DIR = (
-
-    Path(settings.UPLOAD_DIR)
-
+    BACKEND_DIR
+    /
+    "uploads"
     /
     "wheel_inspections"
-
 )
-
 
 
 UPLOAD_DIR.mkdir(
-
     parents=True,
-
-    exist_ok=True
-
+    exist_ok=True,
 )
 
 
-
-
 ALLOWED_CONTENT_TYPES = {
-
     "image/jpeg",
-
     "image/jpg",
-
     "image/png",
-
-    "image/webp"
-
+    "image/webp",
 }
 
 
 
 
+# =====================================================
+# POST - PREDICT WHEEL
+# =====================================================
 
 @router.post("/predict")
 async def predict_wheel(
-
     image: UploadFile = File(...),
-
-    product_id: str | None = Form(None),
-
-    db: Session = Depends(get_db),
-
-    payload: dict = Depends(
-
-        require_roles(
-
-            "operator",
-
-            "supervisor",
-
-            "administrator"
-
-        )
-
-    )
-
 ):
 
+    print("\n================ WHEEL INSPECTION ================")
 
-    start_time = time.perf_counter()
+
+    print("Filename :", image.filename)
+
+    print("Content-Type :", image.content_type)
 
 
-    image_path = None
+
+    if image.content_type not in ALLOWED_CONTENT_TYPES:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Unsupported image format. "
+                "Use JPG, JPEG, PNG or WEBP."
+            ),
+        )
+
+
+
+    extension = Path(
+        image.filename or "capture.jpg"
+    ).suffix.lower()
+
+
+
+    if not extension:
+
+        extension = ".jpg"
+
+
+
+    file_name = f"{uuid.uuid4()}{extension}"
+
+    image_path = UPLOAD_DIR / file_name
 
 
 
     try:
 
 
-        print(
-            "========== WHEEL INSPECTION START =========="
-        )
-
-
-
-        # =====================================
-        # PRODUCT HANDLING
-        # =====================================
-
-
-        product = None
-
-
-
-        if (
-
-            product_id
-
-            and
-
-            product_id.strip()
-
-            and
-
-            product_id.lower() != "string"
-
-        ):
-
-
-            Product(
-    name="Wheel Inspection",
-    code="AUTO-WHEEL",
-    description="AI Wheel Inspection",
-    specification={
-        "component": "Wheel",
-        "inspection_type": "defect_detection",
-        "model": "wheel_classifier"
-    }
-)
-
-
-
-            if not product:
-
-
-                raise HTTPException(
-
-                    status_code=404,
-
-                    detail="Product not found"
-
-                )
-
-
-
-        else:
-
-
-            # backend fallback
-            # use existing product only
-
-            product = (
-
-                db.query(Product)
-
-                .first()
-
-            )
-
-
-
-            if not product:
-
-
-                raise HTTPException(
-
-                    status_code=400,
-
-                    detail="Please select a product"
-
-                )
-
-
-
-
-        print(
-
-            "PRODUCT:",
-
-            product.name
-
-        )
-
-
-
-
-
-        # =====================================
-        # IMAGE VALIDATION
-        # =====================================
-
-
-        if image.content_type not in ALLOWED_CONTENT_TYPES:
-
-
-            raise HTTPException(
-
-                status_code=400,
-
-                detail="Invalid image format"
-
-            )
-
-
-
-
-
-        # =====================================
-        # SAVE IMAGE
-        # =====================================
-
-
-        extension = (
-
-            Path(
-
-                image.filename
-
-                or
-
-                "wheel.jpg"
-
-            )
-
-            .suffix
-
-        )
-
-
-
-        if not extension:
-
-            extension=".jpg"
-
-
-
-
-        filename = (
-
-            f"{uuid.uuid4()}{extension}"
-
-        )
-
-
-
-        image_path = (
-
-            UPLOAD_DIR
-
-            /
-
-            filename
-
-        )
-
-
-
-
-
         with image_path.open("wb") as buffer:
 
-
             shutil.copyfileobj(
-
                 image.file,
-
-                buffer
-
+                buffer,
             )
 
 
 
-        print(
+        print("Saved Image :", image_path)
 
-            "IMAGE:",
 
-            image_path
+
+        prediction = wheel_classifier.predict(
+            str(image_path)
+        )
+
+
+
+        print("\n========== MODEL OUTPUT ==========")
+
+        print(prediction)
+
+
+
+        rule_result = evaluate_wheel_prediction(
+
+            class_name=prediction["class_name"],
+
+            confidence=prediction["confidence"]
 
         )
 
 
 
+        print("\n========== RULE ENGINE ==========")
 
-
-        # =====================================
-        # AI PREDICTION
-        # =====================================
-
-
-        prediction = (
-
-            wheel_classifier.predict(
-
-                str(image_path)
-
-            )
-
-        )
-
-
-
-        print(
-
-            "MODEL:",
-
-            prediction
-
-        )
-
-
-
-
-
-        confidence = prediction.get(
-
-            "confidence",
-
-            0
-
-        )
-
-
-
-        if prediction.get(
-
-            "confidence_percentage"
-
-        ):
-
-
-            confidence = (
-
-                prediction["confidence_percentage"]
-
-                /
-
-                100
-
-            )
-
-
-
-
-
-        # =====================================
-        # RULE ENGINE
-        # =====================================
-
-
-        decision = (
-
-            evaluate_wheel_prediction(
-
-                prediction["class_name"],
-
-                confidence
-
-            )
-
-        )
-
-
-
-        print(
-
-            "DECISION:",
-
-            decision
-
-        )
-
-
-
-
-
-        inspection_time = round(
-
-            time.perf_counter()
-
-            -
-
-            start_time,
-
-            3
-
-        )
-
-
-
-
-
-        # =====================================
-        # STATUS
-        # =====================================
-
-
-        status = (
-
-            InspectionStatus.PASS_
-
-            if decision["decision"] == "PASS"
-
-            else InspectionStatus.FAIL
-
-        )
-
-
-
-
-
-        severity = {
-
-            "none": Severity.NONE,
-
-            "minor": Severity.MINOR,
-
-            "medium": Severity.MAJOR,
-
-            "major": Severity.MAJOR,
-
-            "critical": Severity.CRITICAL
-
-        }.get(
-
-            decision.get(
-
-                "severity",
-
-                "major"
-
-            ).lower(),
-
-            Severity.MAJOR
-
-        )
-
-
-
-
-
-
-        # =====================================
-        # SAVE INSPECTION
-        # =====================================
-
-
-        inspection = Inspection(
-
-
-            product_id=product.id,
-
-
-            operator_id=payload["sub"],
-
-
-            image_path=str(image_path),
-
-
-            status=status,
-
-
-            confidence=confidence,
-
-
-            severity=severity,
-
-
-            ai_raw_output=prediction,
-
-
-            rule_engine_output=decision,
-
-
-            inspection_time_seconds=inspection_time
-
-
-        )
-
-
-
-        db.add(inspection)
-
-
-        db.flush()
-
-
-
-        print(
-
-            "INSPECTION ID:",
-
-            inspection.id
-
-        )
-
-
-
-
-
-        # =====================================
-        # SAVE DEFECT
-        # =====================================
-
-
-        if not decision["passed"]:
-
-
-            actions = decision.get(
-
-                "suggested_actions",
-
-                [
-
-                    "Manual inspection required"
-
-                ]
-
-            )
-
-
-            defect = Defect(
-
-
-                inspection_id=inspection.id,
-
-
-                defect_type=prediction["class_name"],
-
-
-                component_name="Wheel",
-
-
-                severity=severity,
-
-
-                confidence=confidence,
-
-
-                suggested_correction=actions[0]
-
-
-            )
-
-
-            db.add(defect)
-
-
-
-
-
-
-        # =====================================
-        # PDF REPORT
-        # =====================================
-
-
-        report_folder = os.path.join(
-
-            settings.UPLOAD_DIR,
-
-            "reports"
-
-        )
-
-
-
-        os.makedirs(
-
-            report_folder,
-
-            exist_ok=True
-
-        )
-
-
-
-        pdf_path = os.path.join(
-
-            report_folder,
-
-            f"{inspection.id}.pdf"
-
-        )
-
-
-
-
-
-        operator = (
-
-            db.query(User)
-
-            .filter(
-
-                User.id == payload["sub"]
-
-            )
-
-            .first()
-
-        )
-
-
-
-
-
-        generate_inspection_pdf(
-
-
-            output_path=pdf_path,
-
-
-            image_path=str(image_path),
-
-
-            product_name=product.name,
-
-
-            status=decision["decision"],
-
-
-            confidence=confidence,
-
-
-            severity=severity.value,
-
-
-            reasons=decision.get(
-
-                "reasons",
-
-                []
-
-            ),
-
-
-            suggested_actions=decision.get(
-
-                "suggested_actions",
-
-                []
-
-            ),
-
-
-            inspection_time_seconds=inspection_time,
-
-
-            operator_name=(
-
-                operator.full_name
-
-                if operator
-
-                else
-
-                "Operator"
-
-            ),
-
-
-            supervisor_name=None,
-
-
-            created_at=datetime.utcnow()
-
-        )
-
-
-
-
-
-
-        report = InspectionReport(
-
-
-            inspection_id=inspection.id,
-
-
-            pdf_path=pdf_path,
-
-
-            summary=(
-
-                f"{decision['decision']} - "
-
-                f"{prediction['class_name']}"
-
-            ),
-
-
-            reasons=decision.get(
-
-                "reasons",
-
-                []
-
-            ),
-
-
-            suggested_actions=decision.get(
-
-                "suggested_actions",
-
-                []
-
-            )
-
-
-        )
-
-
-
-        db.add(report)
-
-
-
-
-        db.commit()
-
-
-        db.refresh(inspection)
-
-
-
-
-
-        print(
-
-            "========== SUCCESS =========="
-
-        )
-
-
+        print(rule_result)
 
 
 
         return {
 
+            "success": True,
 
-            "success":True,
+            "image_name": file_name,
 
+            "prediction": prediction,
 
-            "inspection_id":inspection.id,
-
-
-            "product":{
-
-                "id":product.id,
-
-                "name":product.name
-
-            },
-
-
-            "status":inspection.status.value,
-
-
-            "confidence":inspection.confidence,
-
-
-            "severity":inspection.severity.value,
-
-
-            "prediction":prediction,
-
-
-            "inspection":decision
-
+            "inspection": rule_result,
 
         }
 
 
 
+    except Exception as error:
+
+
+        print("ERROR :", error)
 
 
 
+        if image_path.exists():
 
-    except HTTPException:
-
-        raise
-
-
-
-
-
-    except Exception as e:
-
-
-        print(
-
-            "ERROR:",
-
-            e
-
-        )
-
-
-        db.rollback()
+            image_path.unlink()
 
 
 
@@ -881,15 +175,87 @@ async def predict_wheel(
 
             status_code=500,
 
-            detail=str(e)
+            detail=f"Wheel inspection failed: {error}",
 
-        )
-
-
+        ) from error
 
 
 
     finally:
 
-
         await image.close()
+
+
+
+
+
+
+# =====================================================
+# GET INSPECTION RESULT
+# =====================================================
+
+@router.get("/inspection/{inspection_id}")
+def get_wheel_inspection(
+    inspection_id: str,
+    db: Session = Depends(get_db),
+):
+
+
+    inspection = (
+        db.query(Inspection)
+        .filter(
+            Inspection.id == inspection_id
+        )
+        .first()
+    )
+
+
+    if not inspection:
+
+        raise HTTPException(
+
+            status_code=404,
+
+            detail="Inspection not found"
+
+        )
+
+
+
+    return {
+
+        "success": True,
+
+        "inspection_id": inspection.id,
+
+        "status": inspection.status.value
+        if inspection.status
+        else None,
+
+
+        "confidence": inspection.confidence,
+
+
+        "severity": inspection.severity.value
+        if inspection.severity
+        else None,
+
+
+        "image_path": inspection.image_path,
+
+
+        "ai_output": inspection.ai_raw_output,
+
+
+        "rule_engine": inspection.rule_engine_output,
+
+
+        "inspection_time_seconds":
+            inspection.inspection_time_seconds,
+
+
+        "created_at":
+            inspection.created_at,
+
+
+    }

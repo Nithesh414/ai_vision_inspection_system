@@ -5,6 +5,7 @@ import uuid
 import time
 import random
 from datetime import datetime
+from threading import Thread
 
 
 router = APIRouter(
@@ -21,55 +22,64 @@ UPLOAD_DIR.mkdir(
 )
 
 
-# Temporary memory storage
+# Temporary storage
 DATASET = []
 
 PRODUCTS = []
 
 
 
-# =====================================
-# MODEL STATUS (DISPLAY ONLY)
-# Inspection DOES NOT use this
-# =====================================
+# =================================================
+# DISPLAY MODEL STATUS ONLY
+# Inspection will continue using old model
+# =================================================
 
 MODEL_STATUS = {
 
     "current_model":
     "Industrial_AI_Model_v1.0",
 
+
     "latest_model":
     "Industrial_AI_Model_v1.1",
+
 
     "status":
     "Idle",
 
+
     "progress":
     0,
+
 
     "accuracy":
     0,
 
+
     "loss":
     0,
+
 
     "dataset_images":
     0,
 
+
     "last_training":
     None
+
 }
 
 
 
-# =====================================
+
+# =================================================
 # CREATE PRODUCT
-# =====================================
+# =================================================
 
 @router.post("/product")
 def create_product(
-    name: str = Form(...),
-    code: str = Form(...)
+    name:str = Form(...),
+    code:str = Form(...)
 ):
 
     product = {
@@ -93,10 +103,9 @@ def create_product(
 
 
 
-
-# =====================================
+# =================================================
 # GET PRODUCTS
-# =====================================
+# =================================================
 
 @router.get("/products")
 def get_products():
@@ -107,20 +116,20 @@ def get_products():
 
 
 
-# =====================================
+# =================================================
 # UPLOAD TRAINING IMAGE
-# =====================================
+# =================================================
 
 @router.post("/upload")
 async def upload_training_sample(
 
-    image: UploadFile = File(...),
+    image:UploadFile = File(...),
 
-    product_id: str = Form(...),
+    product_id:str = Form(...),
 
-    label: str = Form(...),
+    label:str = Form(...),
 
-    notes: str = Form("")
+    notes:str = Form("")
 
 ):
 
@@ -132,7 +141,7 @@ async def upload_training_sample(
 
 
 
-    with open(file_path, "wb") as buffer:
+    with open(file_path,"wb") as buffer:
 
         shutil.copyfileobj(
             image.file,
@@ -169,17 +178,17 @@ async def upload_training_sample(
     })
 
 
-    # real count update
+
     MODEL_STATUS["dataset_images"] = len(DATASET)
 
 
 
     return {
 
-        "success": True,
+        "success":True,
 
         "message":
-        "Training image uploaded successfully",
+        "Training image uploaded",
 
         "total_images":
         len(DATASET)
@@ -190,11 +199,11 @@ async def upload_training_sample(
 
 
 
-# =====================================
-# DEMO RETRAINING PROCESS
-# =====================================
+# =================================================
+# TRAINING SIMULATION
+# =================================================
 
-def run_training():
+def train_model():
 
 
     MODEL_STATUS["status"] = "Training"
@@ -203,26 +212,28 @@ def run_training():
 
 
 
-    for epoch in range(1,11):
+    for step in range(1,6):
 
 
-        MODEL_STATUS["progress"] = epoch * 10
+        time.sleep(1)
+
+
+
+        MODEL_STATUS["progress"] = step * 20
 
 
 
         MODEL_STATUS["accuracy"] = round(
-            random.uniform(94,98),
+            random.uniform(95,98),
             2
         )
 
 
         MODEL_STATUS["loss"] = round(
-            random.uniform(0.05,0.15),
+            random.uniform(0.05,0.12),
             3
         )
 
-
-        time.sleep(1)
 
 
 
@@ -250,26 +261,31 @@ def run_training():
 
 
 
-# =====================================
+# =================================================
 # START RETRAINING
-# =====================================
+# =================================================
 
 @router.post("/start")
 def start_training():
 
 
-    run_training()
+    thread = Thread(
+        target=train_model
+    )
+
+
+    thread.start()
+
 
 
     return {
 
-        "success": True,
+
+        "success":True,
+
 
         "message":
-        "Retraining completed",
-
-        "model_status":
-        MODEL_STATUS
+        "Retraining started"
 
     }
 
@@ -277,12 +293,12 @@ def start_training():
 
 
 
-# =====================================
+# =================================================
 # TRAINING STATUS
-# =====================================
+# =================================================
 
 @router.get("/status")
-def get_training_status():
+def training_status():
 
     return MODEL_STATUS
 
@@ -290,14 +306,15 @@ def get_training_status():
 
 
 
-# =====================================
+# =================================================
 # ANALYTICS MODEL CARD
-# =====================================
+# =================================================
 
 @router.get("/model-status")
-def get_model_status():
+def model_status():
 
     return {
+
 
         "current_model":
         MODEL_STATUS["current_model"],
@@ -320,7 +337,7 @@ def get_model_status():
 
 
         "dataset_images":
-        len(DATASET),
+        MODEL_STATUS["dataset_images"],
 
 
         "last_training":
@@ -332,14 +349,15 @@ def get_model_status():
 
 
 
-# =====================================
-# DATASET VIEW
-# =====================================
+# =================================================
+# DATASET
+# =================================================
 
 @router.get("")
-def get_dataset():
+def dataset():
 
     return {
+
 
         "count":
         len(DATASET),

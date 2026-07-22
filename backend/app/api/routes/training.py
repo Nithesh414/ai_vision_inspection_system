@@ -5,10 +5,6 @@ import uuid
 import time
 import random
 from datetime import datetime
-from threading import Thread
-
-from app.db.session import SessionLocal
-from app.models.models import ModelVersion
 
 
 router = APIRouter(
@@ -27,89 +23,65 @@ UPLOAD_DIR.mkdir(
 
 DATASET = []
 
-
 PRODUCTS = []
 
 
+# =====================================
+# MODEL STATUS (DISPLAY ONLY)
+# Inspection will NOT use this
+# =====================================
 
-# ==========================
-# GLOBAL MODEL STATUS
-# ==========================
+MODEL_STATUS = {
 
-TRAINING_STATUS = {
+    "current_model":
+    "Industrial_AI_Model_v1.0",
 
-
-    "model_name":
-    "No Model",
-
-
-    "model_version":
-    "v0.0",
-
+    "latest_model":
+    "Industrial_AI_Model_v1.1",
 
     "status":
     "Idle",
 
-
     "progress":
     0,
-
-
-    "epoch":
-    0,
-
-
-    "total_epochs":
-    10,
-
 
     "accuracy":
     0,
 
-
     "loss":
     0,
-
 
     "dataset_images":
     0,
 
-
     "last_training":
     None
-
 }
 
 
 
-
-# ==========================
+# =====================================
 # CREATE PRODUCT
-# ==========================
+# =====================================
 
 @router.post("/product")
 def create_product(
 
     name:str = Form(...),
-
     code:str = Form(...)
 
 ):
 
-
-    product={
+    product = {
 
         "id":
         str(uuid.uuid4()),
 
-
         "name":
         name,
 
-
         "code":
         code,
-
 
         "created_at":
         str(datetime.now())
@@ -125,10 +97,9 @@ def create_product(
 
 
 
-
-# ==========================
+# =====================================
 # PRODUCT LIST
-# ==========================
+# =====================================
 
 @router.get("/products")
 def get_products():
@@ -139,9 +110,9 @@ def get_products():
 
 
 
-# ==========================
+# =====================================
 # UPLOAD TRAINING IMAGE
-# ==========================
+# =====================================
 
 @router.post("/upload")
 async def upload_training_sample(
@@ -157,20 +128,14 @@ async def upload_training_sample(
 ):
 
 
-    filename = (
-        f"{uuid.uuid4()}.jpg"
-    )
+    filename = f"{uuid.uuid4()}.jpg"
 
 
-    path = (
-        UPLOAD_DIR / filename
-    )
+    path = UPLOAD_DIR / filename
 
 
-    with open(
-        path,
-        "wb"
-    ) as buffer:
+
+    with open(path,"wb") as buffer:
 
         shutil.copyfileobj(
             image.file,
@@ -180,7 +145,6 @@ async def upload_training_sample(
 
 
     DATASET.append({
-
 
         "id":
         str(uuid.uuid4()),
@@ -208,7 +172,93 @@ async def upload_training_sample(
     })
 
 
-    TRAINING_STATUS["dataset_images"] = len(DATASET)
+    MODEL_STATUS["dataset_images"] = len(DATASET)
+
+
+
+    return {
+
+        "success":True,
+
+        "message":
+        "Training image uploaded",
+
+        "total_images":
+        len(DATASET)
+
+    }
+
+
+
+
+
+# =====================================
+# FAKE RETRAINING PROCESS
+# Display purpose only
+# =====================================
+
+def run_training():
+
+
+    MODEL_STATUS["status"] = "Training"
+
+
+    MODEL_STATUS["progress"] = 0
+
+
+
+    for step in range(1,11):
+
+
+        MODEL_STATUS["progress"] = step * 10
+
+
+        MODEL_STATUS["accuracy"] = round(
+            random.uniform(94,98),
+            2
+        )
+
+
+        MODEL_STATUS["loss"] = round(
+            random.uniform(0.05,0.15),
+            3
+        )
+
+
+        time.sleep(1)
+
+
+
+    MODEL_STATUS["status"] = "Completed"
+
+
+    MODEL_STATUS["latest_model"] = (
+        "Industrial_AI_Model_v1.1"
+    )
+
+
+    MODEL_STATUS["last_training"] = (
+        str(datetime.now())
+    )
+
+
+    MODEL_STATUS["dataset_images"] = (
+        len(DATASET)
+    )
+
+
+
+
+
+# =====================================
+# START RETRAINING
+# =====================================
+
+@router.post("/start")
+def start_training():
+
+
+    run_training()
 
 
 
@@ -220,11 +270,11 @@ async def upload_training_sample(
 
 
         "message":
-        "Image saved",
+        "Retraining completed",
 
 
-        "total_images":
-        len(DATASET)
+        "model":
+        MODEL_STATUS
 
     }
 
@@ -232,203 +282,41 @@ async def upload_training_sample(
 
 
 
-# ==========================
-# TRAINING PROCESS
-# ==========================
-
-
-def fake_training():
-
-
-    TRAINING_STATUS["status"] = "Preparing Dataset"
-
-    TRAINING_STATUS["progress"] = 10
-
-
-    time.sleep(2)
-
-
-
-    for epoch in range(1,11):
-
-
-        TRAINING_STATUS["status"] = (
-            "Training Model"
-        )
-
-
-        TRAINING_STATUS["epoch"] = epoch
-
-
-        TRAINING_STATUS["progress"] = (
-            epoch * 10
-        )
-
-
-        TRAINING_STATUS["accuracy"] = round(
-
-            random.uniform(
-                94,
-                99
-            ),
-
-            2
-        )
-
-
-        TRAINING_STATUS["loss"] = round(
-
-            random.uniform(
-                0.05,
-                0.2
-            ),
-
-            3
-        )
-
-
-        time.sleep(1)
-
-
-
-    TRAINING_STATUS["status"] = "Completed"
-
-
-    TRAINING_STATUS["progress"] = 100
-
-
-
-    TRAINING_STATUS["model_name"] = (
-        "Industrial_AI_Model"
-    )
-
-
-    TRAINING_STATUS["model_version"] = (
-        "v1.0"
-    )
-
-
-    TRAINING_STATUS["last_training"] = (
-        str(datetime.now())
-    )
-
-
-
-
-
-
-# ==========================
-# START TRAINING
-# ==========================
-
-
-@router.post("/start")
-def start_training():
-
-    db = SessionLocal()
-
-
-    new_version = "v1.1"
-
-
-    model = ModelVersion(
-
-        model_name="Industrial_AI_Model",
-
-        version=new_version,
-
-        accuracy=96.8,
-
-        loss=0.05,
-
-        path="ai_models/weights/model_v1_1.pt",
-
-        active=True
-
-    )
-
-
-    # deactivate old models
-
-    db.query(ModelVersion).update(
-        {
-            "active":False
-        }
-    )
-
-
-    db.add(model)
-
-    db.commit()
-
-    db.refresh(model)
-
-
-    TRAINING_STATUS.update({
-
-        "model_name":
-        model.model_name,
-
-        "status":
-        "Completed",
-
-        "progress":
-        100,
-
-        "accuracy":
-        model.accuracy,
-
-        "loss":
-        model.loss,
-
-        "dataset_images":
-        len(DATASET)
-
-    })
-
-
-    db.close()
-
-
-    return {
-
-        "success":True,
-
-        "model_version":
-        new_version,
-
-        "accuracy":
-        model.accuracy
-
-    }
-
-# ==========================
-# STATUS
-# ==========================
-
+# =====================================
+# TRAINING STATUS
+# =====================================
 
 @router.get("/status")
 def get_training_status():
 
-
-    return TRAINING_STATUS
-
+    return MODEL_STATUS
 
 
 
 
 
-# ==========================
-# DATASET
-# ==========================
+# =====================================
+# MODEL STATUS FOR ANALYTICS
+# =====================================
 
+@router.get("/model-status")
+def model_status():
+
+    return MODEL_STATUS
+
+
+
+
+
+# =====================================
+# DATASET LIST
+# =====================================
 
 @router.get("")
 def dataset():
 
 
     return {
-
 
         "images":
         DATASET,
@@ -438,22 +326,3 @@ def dataset():
         len(DATASET)
 
     }
-MODEL_STATUS = {
-
-    "current_model":"Industrial_AI_Model_v1.0",
-
-    "latest_model":"Industrial_AI_Model_v1.1",
-
-    "status":"Completed",
-
-    "accuracy":96.5,
-
-    "dataset_images":120
-
-}
-
-
-@router.get("/model-status")
-def model_status():
-
-    return MODEL_STATUS

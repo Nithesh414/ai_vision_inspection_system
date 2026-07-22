@@ -12,7 +12,7 @@ from fastapi import (
     HTTPException,
     Depends
 )
-
+from app.core.security import get_token_payload
 from sqlalchemy.orm import Session
 
 
@@ -79,7 +79,9 @@ async def predict_wheel(
 
     image: UploadFile = File(...),
 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+
+    payload: dict = Depends(get_token_payload)
 
 ):
 
@@ -317,7 +319,7 @@ async def predict_wheel(
             product_id=product.id,
 
 
-            operator_id=None,
+            operator_id=payload["sub"],
 
 
             image_path=str(image_path),

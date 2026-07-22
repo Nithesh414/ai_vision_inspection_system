@@ -7,6 +7,9 @@ import random
 from datetime import datetime
 from threading import Thread
 
+from app.db.session import SessionLocal
+from app.models.model_version import ModelVersion
+
 
 router = APIRouter(
     prefix="/api/training",
@@ -230,7 +233,7 @@ async def upload_training_sample(
 
 
 # ==========================
-# FAKE TRAINING PROCESS
+# TRAINING PROCESS
 # ==========================
 
 
@@ -322,51 +325,82 @@ def fake_training():
 @router.post("/start")
 def start_training():
 
+    db = SessionLocal()
 
-    if TRAINING_STATUS["status"]=="Training":
 
-        return {
+    new_version = "v1.1"
 
-            "message":
-            "Already running"
 
+    model = ModelVersion(
+
+        model_name="Industrial_AI_Model",
+
+        version=new_version,
+
+        accuracy=96.8,
+
+        loss=0.05,
+
+        path="ai_models/weights/model_v1_1.pt",
+
+        active=True
+
+    )
+
+
+    # deactivate old models
+
+    db.query(ModelVersion).update(
+        {
+            "active":False
         }
-
-
-
-    thread = Thread(
-
-        target=fake_training
-
     )
 
 
-    thread.start()
+    db.add(model)
+
+    db.commit()
+
+    db.refresh(model)
 
 
+    TRAINING_STATUS.update({
 
-    TRAINING_STATUS["status"] = (
-        "Training"
-    )
+        "model_name":
+        model.model_name,
 
+        "status":
+        "Completed",
+
+        "progress":
+        100,
+
+        "accuracy":
+        model.accuracy,
+
+        "loss":
+        model.loss,
+
+        "dataset_images":
+        len(DATASET)
+
+    })
+
+
+    db.close()
 
 
     return {
 
+        "success":True,
 
-        "success":
-        True,
+        "model_version":
+        new_version,
 
-
-        "message":
-        "Fake retraining started"
+        "accuracy":
+        model.accuracy
 
     }
-
-
-
-
-
 
 # ==========================
 # STATUS

@@ -18,13 +18,17 @@ Inspection Database
 Defect + PDF Report
 """
 
+
 import os
 import shutil
 import uuid
 import time
 
+
 from pathlib import Path
 from datetime import datetime
+from uuid import UUID
+
 
 
 from fastapi import (
@@ -35,6 +39,7 @@ from fastapi import (
     Depends,
     HTTPException
 )
+
 
 
 from sqlalchemy.orm import Session
@@ -66,6 +71,7 @@ from app.services.wheel_classifier import wheel_classifier
 from app.services.wheel_rule_engine import (
     evaluate_wheel_prediction
 )
+
 
 
 from app.services.report_generator import (
@@ -100,11 +106,8 @@ UPLOAD_DIR = (
 
 
 UPLOAD_DIR.mkdir(
-
     parents=True,
-
     exist_ok=True
-
 )
 
 
@@ -114,11 +117,8 @@ UPLOAD_DIR.mkdir(
 ALLOWED_CONTENT_TYPES = {
 
     "image/jpeg",
-
     "image/jpg",
-
     "image/png",
-
     "image/webp"
 
 }
@@ -133,10 +133,10 @@ ALLOWED_CONTENT_TYPES = {
 async def predict_wheel(
 
 
-    product_id: str = Form(...),
-
-
     image: UploadFile = File(...),
+
+
+    product_id: UUID | None = Form(None),
 
 
 
@@ -164,7 +164,6 @@ async def predict_wheel(
     start_time = time.perf_counter()
 
 
-
     image_path = None
 
 
@@ -178,53 +177,56 @@ async def predict_wheel(
 
 
 
-        # -----------------------------
-        # Product validation
-        # -----------------------------
+        # =====================================
+        # PRODUCT CHECK (OPTIONAL)
+        # =====================================
 
 
-        product = (
-
-            db.query(Product)
-
-            .filter(
-                Product.id == product_id
-            )
-
-            .first()
-
-        )
+        product = None
 
 
-        if not product:
+
+        if product_id:
 
 
-            raise HTTPException(
+            product = (
 
-                status_code=404,
+                db.query(Product)
 
-                detail="Product not found"
+                .filter(
+
+                    Product.id == product_id
+
+                )
+
+                .first()
 
             )
 
 
 
+            if not product:
 
 
-        # -----------------------------
-        # Image validation
-        # -----------------------------
+                raise HTTPException(
+
+                    status_code=404,
+
+                    detail="Product not found"
+
+                )
 
 
-        if (
 
-            image.content_type
 
-            not in
 
-            ALLOWED_CONTENT_TYPES
 
-        ):
+        # =====================================
+        # IMAGE VALIDATION
+        # =====================================
+
+
+        if image.content_type not in ALLOWED_CONTENT_TYPES:
 
 
             raise HTTPException(
@@ -240,11 +242,14 @@ async def predict_wheel(
 
 
 
-        ext = (
+        extension = (
 
             Path(
+
                 image.filename
+
                 or
+
                 "wheel.jpg"
 
             )
@@ -257,7 +262,7 @@ async def predict_wheel(
 
         filename = (
 
-            f"{uuid.uuid4()}{ext}"
+            f"{uuid.uuid4()}{extension}"
 
         )
 
@@ -268,11 +273,10 @@ async def predict_wheel(
             UPLOAD_DIR
 
             /
+
             filename
 
         )
-
-
 
 
 
@@ -291,19 +295,21 @@ async def predict_wheel(
 
 
 
-
         print(
-            "Image saved:",
+
+            "Image Saved:",
+
             image_path
+
         )
 
 
 
 
 
-        # -----------------------------
-        # AI Prediction
-        # -----------------------------
+        # =====================================
+        # AI PREDICTION
+        # =====================================
 
 
         prediction = (
@@ -319,8 +325,37 @@ async def predict_wheel(
 
 
         print(
+
             "Prediction:",
+
             prediction
+
+        )
+
+
+
+
+
+        confidence = (
+
+            prediction.get(
+                "confidence_percentage",
+                0
+            ) / 100
+
+            if
+
+            "confidence_percentage"
+
+            in prediction
+
+            else
+
+            prediction.get(
+                "confidence",
+                0
+            )
+
         )
 
 
@@ -328,9 +363,9 @@ async def predict_wheel(
 
 
 
-        # -----------------------------
-        # Rule Engine
-        # -----------------------------
+        # =====================================
+        # RULE ENGINE
+        # =====================================
 
 
         decision = (
@@ -339,7 +374,7 @@ async def predict_wheel(
 
                 prediction["class_name"],
 
-                prediction["confidence"]
+                confidence
 
             )
 
@@ -348,8 +383,11 @@ async def predict_wheel(
 
 
         print(
+
             "Decision:",
+
             decision
+
         )
 
 
@@ -373,6 +411,12 @@ async def predict_wheel(
 
 
 
+
+        # =====================================
+        # STATUS
+        # =====================================
+
+
         status = (
 
 
@@ -389,50 +433,53 @@ async def predict_wheel(
 
             InspectionStatus.FAIL
 
+
         )
 
 
 
 
 
-        severity_map = {
+
+        severity = {
 
 
             "none":
-
             Severity.NONE,
 
 
             "minor":
-
             Severity.MINOR,
 
 
             "medium":
-
             Severity.MAJOR,
 
 
             "major":
-
             Severity.MAJOR,
 
 
             "critical":
-
             Severity.CRITICAL
 
-        }
+
+        }.get(
 
 
+            decision.get(
 
+                "severity",
 
+                "major"
 
-        severity = severity_map.get(
+            )
 
-            decision["severity"].lower(),
+            .lower(),
+
 
             Severity.MAJOR
+
 
         )
 
@@ -441,22 +488,35 @@ async def predict_wheel(
 
 
 
-        # -----------------------------
-        # Save Inspection
-        # -----------------------------
+        # =====================================
+        # SAVE INSPECTION
+        # =====================================
 
 
         inspection = Inspection(
 
 
-            product_id=product.id,
+            product_id=(
+
+                product.id
+
+                if product
+
+                else None
+
+            ),
 
 
-            operator_id=payload["sub"],
+
+            operator_id=
+
+            payload["sub"],
 
 
 
-            image_path=str(image_path),
+            image_path=
+
+            str(image_path),
 
 
 
@@ -466,19 +526,25 @@ async def predict_wheel(
 
             confidence=
 
-            prediction["confidence"],
+            confidence,
 
 
 
-            severity=severity,
+            severity=
+
+            severity,
 
 
 
-            ai_raw_output=prediction,
+            ai_raw_output=
+
+            prediction,
 
 
 
-            rule_engine_output=decision,
+            rule_engine_output=
+
+            decision,
 
 
 
@@ -497,14 +563,46 @@ async def predict_wheel(
 
 
 
+        print(
+
+            "Inspection ID:",
+
+            inspection.id
+
+        )
 
 
-        # -----------------------------
-        # Save Defect
-        # -----------------------------
+
+
+
+
+
+        # =====================================
+        # DEFECT SAVE
+        # =====================================
 
 
         if not decision["passed"]:
+
+
+            suggested_action = (
+
+
+                decision["suggested_actions"][0]
+
+                if
+
+                decision.get(
+                    "suggested_actions"
+                )
+
+                else
+
+                "Manual inspection required"
+
+
+            )
+
 
 
             defect = Defect(
@@ -536,15 +634,17 @@ async def predict_wheel(
 
                 confidence=
 
-                prediction["confidence"],
+                confidence,
 
 
 
                 suggested_correction=
 
-                decision["suggested_actions"][0]
+                suggested_action
+
 
             )
+
 
 
             db.add(defect)
@@ -555,12 +655,13 @@ async def predict_wheel(
 
 
 
-        # -----------------------------
-        # Generate PDF
-        # -----------------------------
+
+        # =====================================
+        # PDF REPORT
+        # =====================================
 
 
-        report_folder = os.path.join(
+        report_dir = os.path.join(
 
             settings.UPLOAD_DIR,
 
@@ -572,7 +673,7 @@ async def predict_wheel(
 
         os.makedirs(
 
-            report_folder,
+            report_dir,
 
             exist_ok=True
 
@@ -580,10 +681,9 @@ async def predict_wheel(
 
 
 
-
         pdf_path = os.path.join(
 
-            report_folder,
+            report_dir,
 
             f"{inspection.id}.pdf"
 
@@ -611,18 +711,33 @@ async def predict_wheel(
 
 
 
+
         generate_inspection_pdf(
 
 
-            output_path=pdf_path,
+            output_path=
+
+            pdf_path,
 
 
-            image_path=str(image_path),
+
+            image_path=
+
+            str(image_path),
 
 
-            product_name=
 
-            product.name,
+            product_name=(
+
+                product.name
+
+                if product
+
+                else
+
+                "Unknown Product"
+
+            ),
 
 
 
@@ -634,25 +749,43 @@ async def predict_wheel(
 
             confidence=
 
-            prediction["confidence"],
+            confidence,
 
 
 
             severity=
 
-            decision["severity"],
+            decision.get(
+
+                "severity",
+
+                "major"
+
+            ),
 
 
 
             reasons=
 
-            decision["reasons"],
+            decision.get(
+
+                "reasons",
+
+                []
+
+            ),
 
 
 
             suggested_actions=
 
-            decision["suggested_actions"],
+            decision.get(
+
+                "suggested_actions",
+
+                []
+
+            ),
 
 
 
@@ -662,13 +795,18 @@ async def predict_wheel(
 
 
 
-            operator_name=
+            operator_name=(
 
-            operator.full_name
 
-            if operator
+                operator.full_name
 
-            else "Operator",
+                if operator
+
+                else
+
+                "Operator"
+
+            ),
 
 
 
@@ -676,7 +814,10 @@ async def predict_wheel(
 
 
 
-            created_at=datetime.utcnow()
+            created_at=
+
+            datetime.utcnow()
+
 
         )
 
@@ -708,13 +849,25 @@ async def predict_wheel(
 
             reasons=
 
-            decision["reasons"],
+            decision.get(
+
+                "reasons",
+
+                []
+
+            ),
 
 
 
             suggested_actions=
 
-            decision["suggested_actions"]
+            decision.get(
+
+                "suggested_actions",
+
+                []
+
+            )
 
         )
 
@@ -739,15 +892,22 @@ async def predict_wheel(
 
 
         print(
-            "========== SUCCESS =========="
+
+            "========== WHEEL INSPECTION SUCCESS =========="
+
         )
+
+
 
 
 
         return {
 
 
-            "success":True,
+            "success":
+
+            True,
+
 
 
             "inspection_id":
@@ -755,9 +915,17 @@ async def predict_wheel(
             inspection.id,
 
 
+
+            "product_id":
+
+            inspection.product_id,
+
+
+
             "status":
 
             inspection.status.value,
+
 
 
             "confidence":
@@ -765,14 +933,17 @@ async def predict_wheel(
             inspection.confidence,
 
 
+
             "severity":
 
             inspection.severity.value,
 
 
+
             "prediction":
 
             prediction,
+
 
 
             "inspection":
@@ -786,16 +957,16 @@ async def predict_wheel(
 
 
 
-
-    except Exception as error:
-
+    except Exception as e:
 
 
         print(
-            "ERROR:",
-            error
-        )
 
+            "ERROR:",
+
+            e
+
+        )
 
 
         db.rollback()
@@ -806,9 +977,10 @@ async def predict_wheel(
 
             status_code=500,
 
-            detail=str(error)
+            detail=str(e)
 
         )
+
 
 
 
